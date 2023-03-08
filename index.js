@@ -12,6 +12,7 @@ async function action() {
 
     // Process input for use later
     const configFile = core.getInput("configFile");
+    const mode = core.getInput("mode") || "check-upstream";
     const prBranch = core.getInput("prBranch", { required: true });
     const targetBranch = core.getInput("targetBranch") || "main";
     const prTitle = core.getInput("prTitle", { required: true });
@@ -20,17 +21,26 @@ async function action() {
     // Read the config file
     const upstreams = JSON.parse(fs.readFileSync(configFile));
 
-    // Grab files that changed in this PR
-    const changedFiles = (
-      await octokit.paginate(
-        octokit.rest.pulls.listFiles,
-        {
-          ...github.context.repo,
-          pull_number: github.context.issue.number,
-        },
-        (response) => response.data
-      )
-    ).map((f) => f.filename);
+    // Check that mode is valid
+    const validModes = ["pr-changes", "check-upstream"];
+    if (!validModes.includes(mode)) {
+      throw new Error(`Invalid mode provided: ${mode}`);
+    }
+
+    let changedFiles = [];
+    if (mode == "pr-changes") {
+      // Grab files that changed in this PR
+      changedFiles = (
+        await octokit.paginate(
+          octokit.rest.pulls.listFiles,
+          {
+            ...github.context.repo,
+            pull_number: github.context.issue.number,
+          },
+          (response) => response.data
+        )
+      ).map((f) => f.filename);
+    }
 
     for (const upstream in upstreams) {
       console.log("Processing " + upstream);
@@ -44,12 +54,30 @@ async function action() {
 
       for (let f of files) {
         // Check if the file changed in this PR
-        if (!changedFiles.includes(f.src)) {
+        if (mode == "pr-changes" && !changedFiles.includes(f.src)) {
           continue;
         }
 
+        const content = fs.readFileSync(f.src);
+
+        if (mode == "check-upstream") {
+          // Get contents from the upstream repo and compare to the new value
+          const { data: upstreamContent } = await octokit.rest.repos.getContent(
+            {
+              owner,
+              repo,
+              path: f.dest,
+            }
+          );
+
+          if (content == upstreamContent) {
+            // No change to the contents, continue
+            continue;
+          }
+        }
+
         // If so, add it to the list of files to push downstream
-        commitFiles[f.dest] = fs.readFileSync(f.src);
+        commitFiles[f.dest] = content;
       }
 
       if (Object.keys(commitFiles).length == 0) {
