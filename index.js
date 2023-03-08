@@ -62,17 +62,24 @@ async function action() {
 
         if (mode == "check-upstream") {
           // Get contents from the upstream repo and compare to the new value
-          const { data: upstreamContent } = await octokit.rest.repos.getContent(
-            {
-              owner,
-              repo,
-              path: f.dest,
-            }
-          );
+          try {
+            const { data: upstreamContent } =
+              await octokit.rest.repos.getContent({
+                owner,
+                repo,
+                path: f.dest,
+              });
 
-          if (content == upstreamContent) {
-            // No change to the contents, continue
-            continue;
+            if (content == upstreamContent) {
+              // No change to the contents, continue
+              continue;
+            }
+          } catch (e) {
+            // 404 isn't an error here. It means the file doesn't exist and
+            // we can assume that it needs to be created
+            if (e.status != "404") {
+              throw e;
+            }
           }
         }
 
