@@ -351,6 +351,62 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
+
+    fit("handles missing files in the upstream repo", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: "",
+        code: 404,
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
   });
 });
 
@@ -391,10 +447,11 @@ function mockPrChanges({ owner, repo, files }) {
     );
 }
 
-function mockFileContent({ owner, repo, path, content }) {
+function mockFileContent({ owner, repo, path, content, code }) {
+  code = code || 200;
   nock("https://api.github.com")
     .get(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`)
-    .reply(200, content);
+    .reply(code, content);
 }
 
 function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
