@@ -9,6 +9,19 @@ const mockedEnv = require("mocked-env");
 const nock = require("nock");
 nock.disableNetConnect();
 
+const owner = "mheap";
+const repo = "downstream-test";
+
+const prBranch = "automated-oas-update";
+const targetBranch = "main";
+
+const defaultConfig = {
+  INPUT_CONFIGFILE: ".github/config.json",
+  INPUT_PRBRANCH: prBranch,
+  INPUT_PRTITLE: "Hello",
+  INPUT_PRBODY: "This is in a test case",
+};
+
 describe("Raise PR on change", () => {
   let restore;
   let restoreTest;
@@ -48,46 +61,233 @@ describe("Raise PR on change", () => {
     nock.cleanAll();
   });
 
-  describe("runs successfully", () => {
+  describe("mode: pr-changes", () => {
     it("creates a PR when required", async () => {
-      restoreTest = mockPr(
-        {
-          issue: {
-            user: { login: "valid_user" },
-            number: 27,
-            labels: [],
-          },
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
         },
-        {
-          INPUT_CONFIGFILE: ".github/config.json",
-          INPUT_PRBRANCH: "automated-oas-update",
-          INPUT_PRTITLE: "Hello",
-          INPUT_PRBODY: "This is in a test case",
-        }
-      );
+      });
 
       mockPrChanges({
-        owner: "mheap",
+        owner,
         repo: "missing-repo",
         files: ["my-file.yaml", "another-file.yaml"],
       });
 
-      mockActionConfig();
-
       mockCreateCommit({
-        owner: "mheap",
-        repo: "downstream-test",
-        prBranch: "automated-oas-update",
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
         prSha: "sha-pr-branch",
-        targetBranch: "main",
         targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
       });
 
       mockCreatePr({
-        owner: "mheap",
-        repo: "downstream-test",
-        prBranch: "automated-oas-update",
-        targetBranch: "main",
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      await action();
+
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("does not create a PR if it already exists", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: true,
+      });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("skips files that are not in the list of changed files in the PR", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+      });
+
+      const myFileContents = "First File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+        },
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: true,
+      });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+  });
+
+  describe("mode: check-upstream", () => {
+    it("does not raise a PR if file contents have not changed", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: myFileContents,
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("updates files that have changed in the upstream repo (one changed)", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: "This is different",
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
         prExists: false,
       });
 
@@ -96,46 +296,55 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
-    it("does not create a PR if it already exists", async () => {
-      restoreTest = mockPr(
-        {
-          issue: {
-            user: { login: "valid_user" },
-            number: 27,
-            labels: [],
-          },
-        },
-        {
-          INPUT_CONFIGFILE: ".github/config.json",
-          INPUT_PRBRANCH: "automated-oas-update",
-          INPUT_PRTITLE: "Hello",
-          INPUT_PRBODY: "This is in a test case",
-        }
-      );
-
-      mockPrChanges({
-        owner: "mheap",
-        repo: "missing-repo",
-        files: ["my-file.yaml", "another-file.yaml"],
+    it("updates files that have changed in the upstream repo (all changed)", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
       });
 
-      mockActionConfig();
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: "This is different",
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: "And so is this",
+      });
 
       mockCreateCommit({
-        owner: "mheap",
-        repo: "downstream-test",
-        prBranch: "automated-oas-update",
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
         prSha: "sha-pr-branch",
-        targetBranch: "main",
         targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
       });
 
       mockCreatePr({
-        owner: "mheap",
-        repo: "downstream-test",
-        prBranch: "automated-oas-update",
-        targetBranch: "main",
-        prExists: true,
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
       });
 
       await action();
@@ -145,7 +354,7 @@ describe("Raise PR on change", () => {
   });
 });
 
-function mockActionConfig(config) {
+function mockRepoContents({ files, config }) {
   if (!config) {
     config = {
       "mheap/downstream-test": [
@@ -166,12 +375,9 @@ function mockActionConfig(config) {
     .calledWith(".github/config.json")
     .mockReturnValueOnce(JSON.stringify(config));
 
-  when(fs.readFileSync)
-    .calledWith("my-file.yaml")
-    .mockReturnValueOnce("First File");
-  when(fs.readFileSync)
-    .calledWith("another-file.yaml")
-    .mockReturnValueOnce("Second File");
+  for (let file in files) {
+    when(fs.readFileSync).calledWith(file).mockReturnValueOnce(files[file]);
+  }
 }
 
 function mockPrChanges({ owner, repo, files }) {
@@ -183,6 +389,12 @@ function mockPrChanges({ owner, repo, files }) {
         return { filename: f };
       })
     );
+}
+
+function mockFileContent({ owner, repo, path, content }) {
+  nock("https://api.github.com")
+    .get(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`)
+    .reply(200, content);
 }
 
 function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
@@ -217,6 +429,7 @@ function mockCreateCommit({
   prSha,
   targetBranch,
   targetSha,
+  fileContents,
 }) {
   // Get Ref
   nock("https://api.github.com")
@@ -235,26 +448,22 @@ function mockCreateCommit({
     });
 
   // Create blobs
-  nock("https://api.github.com")
-    .post(`/repos/${owner}/${repo}/git/blobs`, {
-      content: "Rmlyc3QgRmlsZQ==",
-      encoding: "base64",
-    })
-    .reply(201);
-  nock("https://api.github.com")
-    .post(`/repos/${owner}/${repo}/git/blobs`, {
-      content: "U2Vjb25kIEZpbGU=",
-      encoding: "base64",
-    })
-    .reply(201);
+  const tree = [];
+  for (let path in fileContents) {
+    const content = fileContents[path];
+    nock("https://api.github.com")
+      .post(`/repos/${owner}/${repo}/git/blobs`, {
+        content: Buffer.from(content).toString("base64"),
+        encoding: "base64",
+      })
+      .reply(201);
+    tree.push({ path, mode: "100644", type: "blob" });
+  }
 
   // Create Tree
   nock("https://api.github.com")
     .post(`/repos/${owner}/${repo}/git/trees`, {
-      tree: [
-        { path: "specs/foo.yaml", mode: "100644", type: "blob" },
-        { path: "specs/bar.yaml", mode: "100644", type: "blob" },
-      ],
+      tree,
       base_tree: targetSha,
     })
     .reply(201);
@@ -286,7 +495,10 @@ function mockFoo(user, org, role, httpCode) {
     });
 }
 
-function mockPr(payload = {}, envParams = {}) {
+function mockPr(envParams = {}) {
+  const payload = {
+    pull_request: { number: 27 },
+  };
   return mockEvent(
     {
       action: "opened",
