@@ -10,6 +10,9 @@ inputs:
   token:
     description: "A GitHub API token that has permission to list org membership"
     required: true
+  mode:
+    description: "Should we rely on the PR files changes, or check the contents in the upstream repo (default: check-upstream)"
+    required: false
   configFile:
     description: "A file containing downstream repos and any file paths that need updating"
     required: false
