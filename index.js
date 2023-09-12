@@ -49,8 +49,6 @@ async function action() {
       const [owner, repo] = upstream.split("/", 2);
 
       const commitFiles = {};
-      let message =
-        "Automated OAS update: " + files.map((f) => f.dest).join(", ");
 
       for (let f of files) {
         // Check if the file changed in this PR
@@ -87,10 +85,33 @@ async function action() {
         commitFiles[f.dest] = content;
       }
 
+      // Fetch the PR for this branch
+      let pr = (
+        await octokit.rest.pulls.list({
+          owner,
+          repo,
+          head: `${owner}:${prBranch}`,
+        })
+      ).data[0];
+
+      // If there are no changes, don't raise a PR
+      // and close any existing PRs
       if (Object.keys(commitFiles).length == 0) {
         console.log(`No files changed for '${upstream}'`);
+        if (pr) {
+          console.log("Closing existing PR that has no changed files");
+          await octokit.rest.pulls.update({
+            owner,
+            repo,
+            pull_number: pr.pull_request.number,
+            state: "closed",
+          });
+        }
         continue;
       }
+
+      let message =
+        "Automated OAS update: " + Object.keys(commitFiles).join(", ");
 
       const opts = {
         owner,
@@ -110,13 +131,6 @@ async function action() {
       await octokit.rest.repos.createOrUpdateFiles(opts);
 
       // Create a PR with this commit hash if it doesn't exist
-      let pr = (
-        await octokit.rest.pulls.list({
-          owner,
-          repo,
-          head: `${owner}:${prBranch}`,
-        })
-      ).data[0];
 
       if (!pr) {
         console.log("Creating PR");
@@ -137,7 +151,7 @@ async function action() {
     }
     core.setOutput("status", "success");
   } catch (e) {
-    console.log(e);
+    console.error(e);
     core.setFailed(e.message);
     core.setOutput("status", "failure");
   }
