@@ -236,6 +236,46 @@ describe("Raise PR on change", () => {
         content: anotherFileContents,
       });
 
+      mockPrExists({ owner, repo, prBranch, prExists: false });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("closes PRs that no longer contain any changes", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: myFileContents,
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      mockPrExists({ owner, repo, prBranch, prExists: true });
+      mockClosePr({ owner, repo });
+
       await action();
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
@@ -454,7 +494,7 @@ function mockFileContent({ owner, repo, path, content, code }) {
     .reply(code, content);
 }
 
-function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
+function mockPrExists({ owner, repo, prBranch, prExists }) {
   const resp = [];
 
   if (prExists) {
@@ -465,6 +505,10 @@ function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
   nock("https://api.github.com")
     .get(`/repos/${owner}/${repo}/pulls?head=${owner}:${prBranch}`)
     .reply(200, resp);
+}
+
+function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
+  mockPrExists({ owner, repo, prBranch, prExists });
 
   if (!prExists) {
     // Create PR
@@ -477,6 +521,14 @@ function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
       })
       .reply(201);
   }
+}
+
+function mockClosePr({ owner, repo, prBranch }) {
+  nock("https://api.github.com")
+    .patch(`/repos/${owner}/${repo}/pulls/123`, {
+      state: "closed",
+    })
+    .reply(200);
 }
 
 function mockCreateCommit({
@@ -542,14 +594,6 @@ function mockCreateCommit({
       sha: "new-commit-sha",
     })
     .reply(200);
-}
-
-function mockFoo(user, org, role, httpCode) {
-  nock("https://api.github.com")
-    .get(`/orgs/${org}/memberships/${user}`)
-    .reply(httpCode, {
-      role,
-    });
 }
 
 function mockPr(envParams = {}) {
