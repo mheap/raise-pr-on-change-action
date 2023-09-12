@@ -49,8 +49,6 @@ async function action() {
       const [owner, repo] = upstream.split("/", 2);
 
       const commitFiles = {};
-      let message =
-        "Automated OAS update: " + files.map((f) => f.dest).join(", ");
 
       for (let f of files) {
         // Check if the file changed in this PR
@@ -91,6 +89,9 @@ async function action() {
         console.log(`No files changed for '${upstream}'`);
         continue;
       }
+
+      let message =
+        "Automated OAS update: " + Object.keys(commitFiles).join(", ");
 
       const opts = {
         owner,

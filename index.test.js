@@ -352,7 +352,7 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
-    fit("handles missing files in the upstream repo", async () => {
+    it("handles missing files in the upstream repo", async () => {
       restoreTest = mockPr({
         ...defaultConfig,
         INPUT_MODE: "check-upstream",
@@ -528,7 +528,7 @@ function mockCreateCommit({
   // Create Commit
   nock("https://api.github.com")
     .post(`/repos/${owner}/${repo}/git/commits`, {
-      message: "Automated OAS update: specs/foo.yaml, specs/bar.yaml",
+      message: `Automated OAS update: ${Object.keys(fileContents).join(", ")}`,
       parents: ["sha-main-branch"],
     })
     .reply(201, {
