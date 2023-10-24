@@ -43,10 +43,11 @@ async function action() {
     }
 
     for (const upstream in upstreams) {
-      console.log("Processing " + upstream);
-      const files = upstreams[upstream];
-
+      console.log("--------------------------------");
       const [owner, repo] = upstream.split("/", 2);
+
+      console.log(`[${owner}/${repo}] Processing`);
+      const files = upstreams[upstream];
 
       const commitFiles = {};
 
@@ -97,9 +98,11 @@ async function action() {
       // If there are no changes, don't raise a PR
       // and close any existing PRs
       if (Object.keys(commitFiles).length == 0) {
-        console.log(`No files changed for '${upstream}'`);
+        console.log(`[${owner}/${repo}] No files changed`);
         if (pr) {
-          console.log("Closing existing PR that has no changed files");
+          console.log(
+            `[${owner}/${repo}] Closing existing PR that has no changed files`
+          );
           await octokit.rest.pulls.update({
             owner,
             repo,
@@ -133,7 +136,7 @@ async function action() {
       // Create a PR with this commit hash if it doesn't exist
 
       if (!pr) {
-        console.log("Creating PR");
+        console.log(`[${owner}/${repo}] Creating PR`);
         pr = (
           await octokit.rest.pulls.create({
             owner,
@@ -144,9 +147,11 @@ async function action() {
             base: targetBranch,
           })
         ).data;
-        console.log("PR created");
+        console.log(`[${owner}/${repo}] PR created`);
       } else {
-        console.log("PR already exists. Not creating another");
+        console.log(
+          `[${owner}/${repo}] PR already exists. Not creating another`
+        );
       }
     }
     core.setOutput("status", "success");

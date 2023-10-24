@@ -243,7 +243,7 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
-    it("closes PRs that no longer contain any changes", async () => {
+    it("does not raise a PR if file contents have not changed", async () => {
       restoreTest = mockPr({
         ...defaultConfig,
         INPUT_MODE: "check-upstream",
@@ -273,10 +273,92 @@ describe("Raise PR on change", () => {
         content: anotherFileContents,
       });
 
-      mockPrExists({ owner, repo, prBranch, prExists: true });
-      mockClosePr({ owner, repo });
+      mockPrExists({ owner, repo, prBranch, prExists: false });
 
       await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("raises a PR if files change in upstream one, but not upstream two", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const firstFileContents = "First File";
+      const secondFileContents = "Second File";
+
+      // Upstream repo contents
+      mockRepoContents({
+        files: {
+          "my-file.yaml": firstFileContents,
+          "another-file.yaml": secondFileContents,
+        },
+        config: {
+          "mheap/downstream-test": [
+            {
+              src: "my-file.yaml",
+              dest: "specs/foo.yaml",
+            },
+          ],
+          "mheap/no-pr-raised": [
+            {
+              src: "another-file.yaml",
+              dest: "specs/bar.yaml",
+            },
+          ],
+        },
+      });
+
+      // Downstream: mheap/downstream-test
+      mockFileContent({
+        owner: "mheap",
+        repo: "downstream-test",
+        path: "specs/foo.yaml",
+        content: "This does not match so a PR should be raised",
+      });
+
+      mockCreateCommit({
+        owner: "mheap",
+        repo: "downstream-test",
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": firstFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner: "mheap",
+        repo: "downstream-test",
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      // Downstream: mheap/no-pr-raised
+      mockFileContent({
+        owner: "mheap",
+        repo: "no-pr-raised",
+        path: "specs/bar.yaml",
+        content: secondFileContents,
+      });
+
+      mockPrExists({
+        owner: "mheap",
+        repo: "no-pr-raised",
+        prBranch,
+        prExists: false,
+      });
+
+      await action();
+      expect(console.log).toBeCalledWith("[mheap/downstream-test] Creating PR");
+      expect(console.log).toBeCalledWith(
+        "[mheap/no-pr-raised] No files changed"
+      );
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
