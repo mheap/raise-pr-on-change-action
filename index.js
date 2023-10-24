@@ -69,7 +69,13 @@ async function action() {
                 path: f.dest,
               });
 
-            if (content == upstreamContent) {
+            // Convert from base64
+            const upstreamContentDecoded = Buffer.from(
+              upstreamContent.content,
+              "base64"
+            ).toString("utf-8");
+
+            if (content == upstreamContentDecoded) {
               // No change to the contents, continue
               continue;
             }

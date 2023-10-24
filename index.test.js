@@ -573,7 +573,9 @@ function mockFileContent({ owner, repo, path, content, code }) {
   code = code || 200;
   nock("https://api.github.com")
     .get(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`)
-    .reply(code, content);
+    .reply(code, {
+      content: Buffer.from(content).toString("base64"),
+    });
 }
 
 function mockPrExists({ owner, repo, prBranch, prExists }) {
