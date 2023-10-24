@@ -1,31 +1,33 @@
 name: Raise PR on change
 description: Automatically raise a PR to a downstream repo whenever a file changes
 runs:
-  using: docker
-  image: Dockerfile
+  using: node16
+  main: dist/index.js
 branding:
   icon: slash
   color: orange
 inputs:
   token:
-    description: "A GitHub API token that has permission to list org membership"
+    description: A GitHub API token that has permission to list org membership
     required: true
   mode:
-    description: "Should we rely on the PR files changes, or check the contents in the upstream repo (default: check-upstream)"
+    description: >-
+      Should we rely on the PR files changes, or check the contents in the
+      upstream repo (default: check-upstream)
     required: false
   configFile:
-    description: "A file containing downstream repos and any file paths that need updating"
+    description: A file containing downstream repos and any file paths that need updating
     required: false
-    default: ".github/raise-pr-on-change.json"
+    default: .github/raise-pr-on-change.json
   prBranch:
-    description: "The branch to push changes to before submitting a PR"
+    description: The branch to push changes to before submitting a PR
     required: false
   targetBranch:
-    description: "The branch to target when opening a PR"
+    description: The branch to target when opening a PR
     required: false
   prTitle:
-    description: "The PR title to use"
+    description: The PR title to use
     required: true
   prBody:
-    description: "The PR body to use"
+    description: The PR body to use
     required: true
