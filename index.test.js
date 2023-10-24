@@ -582,7 +582,7 @@ function mockPrExists({ owner, repo, prBranch, prExists }) {
   const resp = [];
 
   if (prExists) {
-    resp.push({ pull_request: { number: 123 } });
+    resp.push({ number: 123 });
   }
 
   // List existing PRs

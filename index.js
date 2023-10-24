@@ -112,7 +112,7 @@ async function action() {
           await octokit.rest.pulls.update({
             owner,
             repo,
-            pull_number: pr.pull_request.number,
+            pull_number: pr.number,
             state: "closed",
           });
         }
