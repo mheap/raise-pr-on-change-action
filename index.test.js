@@ -529,10 +529,120 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
+
+    it("handles missing files in the upstream repo (deletions)", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "another-file.yaml": anotherFileContents,
+        },
+        removedFiles: ["my-file.yaml"],
+      });
+
+      mockFileExists({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        code: 404,
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: "This is different to trigger a blob creation",
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/bar.yaml": anotherFileContents,
+        },
+        missingRemovedFiles: ["specs/foo.yaml"],
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("handles deletes files in the upstream repo (deletions)", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "another-file.yaml": anotherFileContents,
+        },
+        removedFiles: ["my-file.yaml"],
+      });
+
+      // This file is deleted so we also have to mock the HEAD check
+      mockFileExists({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: "This is different to trigger a blob creation",
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/bar.yaml": anotherFileContents,
+        },
+        removedFiles: ["specs/foo.yaml"],
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
   });
 });
 
-function mockRepoContents({ files, config }) {
+function mockRepoContents({ files, removedFiles, config }) {
   if (!config) {
     config = {
       "mheap/downstream-test": [
@@ -549,12 +659,18 @@ function mockRepoContents({ files, config }) {
   }
 
   jest.spyOn(fs, "readFileSync").mockImplementation();
+  jest.spyOn(fs, "existsSync").mockImplementation();
+
   when(fs.readFileSync)
     .calledWith(".github/config.json")
     .mockReturnValueOnce(JSON.stringify(config));
 
   for (let file in files) {
+    when(fs.existsSync).calledWith(file).mockReturnValueOnce(true);
     when(fs.readFileSync).calledWith(file).mockReturnValueOnce(files[file]);
+  }
+  for (let file in removedFiles) {
+    when(fs.existsSync).calledWith(file).mockReturnValueOnce(false);
   }
 }
 
@@ -571,11 +687,23 @@ function mockPrChanges({ owner, repo, files }) {
 
 function mockFileContent({ owner, repo, path, content, code }) {
   code = code || 200;
+  content = content || "";
   nock("https://api.github.com")
     .get(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`)
     .reply(code, {
       content: Buffer.from(content).toString("base64"),
     });
+}
+
+function mockFileExists({ owner, repo, path, code }) {
+  code = code || 200;
+  nock("https://api.github.com")
+    .head(
+      `/repos/${owner}/${repo}/contents/${encodeURIComponent(
+        path
+      )}?ref=sha-main-branch`
+    )
+    .reply(code);
 }
 
 function mockPrExists({ owner, repo, prBranch, prExists }) {
@@ -623,7 +751,12 @@ function mockCreateCommit({
   targetBranch,
   targetSha,
   fileContents,
+  removedFiles,
+  missingRemovedFiles,
 }) {
+  removedFiles = removedFiles || [];
+  missingRemovedFiles = missingRemovedFiles || [];
+
   // Get Ref
   nock("https://api.github.com")
     .get(`/repos/${owner}/${repo}/git/ref/heads%2F${prBranch}`)
@@ -642,6 +775,17 @@ function mockCreateCommit({
 
   // Create blobs
   const tree = [];
+
+  // Removals must be the first things in the tree
+  for (let path of removedFiles) {
+    tree.push({
+      path: path,
+      sha: null,
+      mode: "100644",
+      type: "commit",
+    });
+  }
+
   for (let path in fileContents) {
     const content = fileContents[path];
     nock("https://api.github.com")
@@ -664,7 +808,10 @@ function mockCreateCommit({
   // Create Commit
   nock("https://api.github.com")
     .post(`/repos/${owner}/${repo}/git/commits`, {
-      message: `Automated OAS update: ${Object.keys(fileContents).join(", ")}`,
+      message: `Automated OAS update: ${Object.keys(fileContents)
+        .concat(removedFiles)
+        .concat(missingRemovedFiles)
+        .join(", ")}`,
       parents: ["sha-main-branch"],
     })
     .reply(201, {

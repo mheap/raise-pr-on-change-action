@@ -28,6 +28,7 @@ async function action() {
     }
 
     let changedFiles = [];
+    const removedFiles = [];
     if (mode == "pr-changes") {
       // Grab files that changed in this PR
       changedFiles = (
@@ -57,7 +58,14 @@ async function action() {
           continue;
         }
 
-        const content = fs.readFileSync(f.src);
+        // Check if the file exists
+        let content = "";
+        if (fs.existsSync(f.src)) {
+          content = fs.readFileSync(f.src);
+        } else {
+          removedFiles.push(f.dest);
+          continue;
+        }
 
         if (mode == "check-upstream") {
           // Get contents from the upstream repo and compare to the new value
@@ -103,7 +111,7 @@ async function action() {
 
       // If there are no changes, don't raise a PR
       // and close any existing PRs
-      if (Object.keys(commitFiles).length == 0) {
+      if (Object.keys(commitFiles).length == 0 && removedFiles.length == 0) {
         console.log(`[${owner}/${repo}] No files changed`);
         if (pr) {
           console.log(
@@ -120,7 +128,7 @@ async function action() {
       }
 
       let message =
-        "Automated OAS update: " + Object.keys(commitFiles).join(", ");
+        "Automated OAS update: " + Object.keys(commitFiles).concat(removedFiles).join(", ");
 
       const opts = {
         owner,
@@ -132,12 +140,14 @@ async function action() {
           {
             message,
             files: commitFiles,
+            filesToDelete: removedFiles,
+            ignoreDeletionFailures: true,
           },
         ],
         base: targetBranch,
       };
 
-      await octokit.rest.repos.createOrUpdateFiles(opts);
+      await octokit.createOrUpdateFiles(opts);
 
       // Create a PR with this commit hash if it doesn't exist
 
