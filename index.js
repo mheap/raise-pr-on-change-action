@@ -30,7 +30,6 @@ async function action() {
     }
 
     let changedFiles = [];
-    const removedFiles = [];
     if (mode == "pr-changes") {
       // Grab files that changed in this PR
       changedFiles = (
@@ -47,6 +46,7 @@ async function action() {
 
     for (const upstream in upstreams) {
       console.log("--------------------------------");
+      const removedFiles = [];
       const [owner, repo] = upstream.split("/", 2);
 
       console.log(`[${owner}/${repo}] Processing`);
