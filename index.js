@@ -86,7 +86,7 @@ async function action() {
             ).toString("utf-8");
 
             if (content == upstreamContentDecoded) {
-              console.log(`[${owner}/${repo}] Files are the same, skipping`);
+              console.log(`[${owner}/${repo}] Files are the same, skipping (${f.src} => ${f.dest})`);
               // No change to the contents, continue
               continue;
             } else {
