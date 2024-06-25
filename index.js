@@ -1,6 +1,8 @@
 const core = require("@actions/core");
 const github = require("@actions/github");
 
+const Diff = require("diff");
+
 const CommitMultipleFiles = require("octokit-commit-multiple-files");
 
 const fs = require("fs");
@@ -84,8 +86,19 @@ async function action() {
             ).toString("utf-8");
 
             if (content == upstreamContentDecoded) {
+              console.log(`[${owner}/${repo}] Files are the same, skipping`);
               // No change to the contents, continue
               continue;
+            } else {
+              if (process.env.ACTIONS_RUNNER_DEBUG) {
+                const patch = Diff.createTwoFilesPatch(
+                  "upstream.yaml",
+                  "openapi.yaml",
+                  upstreamContentDecoded,
+                  content
+                );
+                console.log(patch);
+              }
             }
           } catch (e) {
             // 404 isn't an error here. It means the file doesn't exist and
