@@ -124,7 +124,9 @@ async function action() {
 
       // If there are no changes, don't raise a PR
       // and close any existing PRs
-      if (Object.keys(commitFiles).length == 0 && removedFiles.length == 0) {
+      const changedFilesCount = Object.keys(commitFiles).length;
+      const removedFilesCount = removedFiles.length;
+      if (changedFilesCount == 0 && removedFilesCount == 0) {
         console.log(`[${owner}/${repo}] No files changed`);
         if (pr) {
           console.log(
@@ -140,8 +142,17 @@ async function action() {
         continue;
       }
 
+      console.log(
+        `[${owner}/${repo}] Found ${changedFilesCount} changed files and ${removedFilesCount} removed files`
+      );
+
       let message =
-        "Automated OAS update: " + Object.keys(commitFiles).concat(removedFiles).join(", ");
+        "Automated OAS update: " +
+        Object.keys(commitFiles).concat(removedFiles).join(", ");
+
+      if (process.env.ACTIONS_RUNNER_DEBUG) {
+        console.log(`[${owner}/${repo}] Commit message: ${message}`);
+      }
 
       const opts = {
         owner,
@@ -163,20 +174,23 @@ async function action() {
       await octokit.createOrUpdateFiles(opts);
 
       // Create a PR with this commit hash if it doesn't exist
-
       if (!pr) {
         console.log(`[${owner}/${repo}] Creating PR`);
-        pr = (
-          await octokit.rest.pulls.create({
-            owner,
-            repo,
-            title: prTitle,
-            body: prBody,
-            head: prBranch,
-            base: targetBranch,
-          })
-        ).data;
-        console.log(`[${owner}/${repo}] PR created`);
+        try {
+          pr = (
+            await octokit.rest.pulls.create({
+              owner,
+              repo,
+              title: prTitle,
+              body: prBody,
+              head: prBranch,
+              base: targetBranch,
+            })
+          ).data;
+          console.log(`[${owner}/${repo}] PR created`);
+        } catch (e) {
+          core.setFailed(`[${owner}/${repo}] ${e.message}`);
+        }
       } else {
         console.log(
           `[${owner}/${repo}] PR already exists. Not creating another`
