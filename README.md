@@ -49,18 +49,20 @@ jobs:
           targetBranch: main
           prTitle: "Automated update X"
           prBody: "This adds files based on upstream repo Y"
+          commitMessage: "feat(sdk): automated oas update"
 ```
 
 ## Available Configuration
 
 ### Inputs
 
-| Name           | Description                                                                                                                                                                                                                   | Required | Default                         |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------- |
-| `token`        | The GitHub auth token, used to authenticate API requests. A [Personal Access Token](https://github.com/settings/tokens/new) with the `repo` scope is required as the default `GITHUB_TOKEN` does not have enough permissions. | true     |
-| `mode`         | Should we rely on the PR files changes, or check the contents in the upstream repo                                                                                                                                            | false    | check-upstream                  |
-| `configFile`   | A file containing downstream repos and any file paths that need updating                                                                                                                                                      | false    | .github/raise-pr-on-change.json |
-| `prBranch`     | The branch to push changes to before submitting a PR                                                                                                                                                                          | false    |
-| `targetBranch` | The branch to target when opening a PR                                                                                                                                                                                        | false    |
-| `prTitle`      | The PR title to use                                                                                                                                                                                                           | true     |
-| `prBody`       | The PR body to use                                                                                                                                                                                                            | true     |
+| Name            | Description                                                                                                                                                                                                                   | Required | Default                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------- |
+| `token`         | The GitHub auth token, used to authenticate API requests. A [Personal Access Token](https://github.com/settings/tokens/new) with the `repo` scope is required as the default `GITHUB_TOKEN` does not have enough permissions. | true     |
+| `mode`          | Should we rely on the PR files changes, or check the contents in the upstream repo                                                                                                                                            | false    | check-upstream                    |
+| `configFile`    | A file containing downstream repos and any file paths that need updating                                                                                                                                                      | false    | .github/raise-pr-on-change.json   |
+| `prBranch`      | The branch to push changes to before submitting a PR                                                                                                                                                                          | false    |
+| `targetBranch`  | The branch to target when opening a PR                                                                                                                                                                                        | false    |
+| `prTitle`       | The PR title to use                                                                                                                                                                                                           | true     |
+| `prBody`        | The PR body to use                                                                                                                                                                                                            | true     |
+| `commitMessage` | The commit message use                                                                                                                                                                                                        | false    | Automated OAS update: {file list} |

@@ -19,6 +19,7 @@ async function action() {
     const targetBranch = core.getInput("targetBranch") || "main";
     const prTitle = core.getInput("prTitle", { required: true });
     const prBody = core.getInput("prBody", { required: true });
+    const commitMessage = core.getInput("commitMessage") || "";
 
     // Read the config file
     const upstreams = JSON.parse(fs.readFileSync(configFile));
@@ -146,13 +147,11 @@ async function action() {
         `[${owner}/${repo}] Found ${changedFilesCount} changed files and ${removedFilesCount} removed files`
       );
 
-      let message =
+      let message = commitMessage ||
         "Automated OAS update: " +
         Object.keys(commitFiles).concat(removedFiles).join(", ");
 
-      if (process.env.ACTIONS_RUNNER_DEBUG) {
-        console.log(`[${owner}/${repo}] Commit message: ${message}`);
-      }
+      console.log(`[${owner}/${repo}] Commit message: ${message}`);
 
       const opts = {
         owner,
