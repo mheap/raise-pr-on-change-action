@@ -151,9 +151,7 @@ async function action() {
         "Automated OAS update: " +
         Object.keys(commitFiles).concat(removedFiles).join(", ");
 
-      if (process.env.ACTIONS_RUNNER_DEBUG) {
-        console.log(`[${owner}/${repo}] Commit message: ${message}`);
-      }
+      console.log(`[${owner}/${repo}] Commit message: ${message}`);
 
       const opts = {
         owner,

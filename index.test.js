@@ -6,6 +6,7 @@ const github = require("@actions/github");
 
 const { when } = require("jest-when");
 const mockedEnv = require("mocked-env");
+const { log } = require("console");
 const nock = require("nock");
 nock.disableNetConnect();
 
@@ -107,6 +108,64 @@ describe("Raise PR on change", () => {
 
       await action();
 
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it.only("creates a PR when required with a custom commit message", async () => {
+      const commitMessage = "feat(sdk): automated oas update";
+
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        // TODO: Adding this line causes the `status` to return `failure` and the "Not all nock interceptors were used" error
+        INPUT_COMMITMESSAGE: commitMessage,
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+        message: commitMessage,
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      await action();
+
+      // TODO: This outputs the console.log calls to the console and shows our commit message is present
+      log(console.log.mock.calls)
+
+      expect(console.log.mock.calls.some(call => call[0].includes(commitMessage))).toBe(true);
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
@@ -753,9 +812,14 @@ function mockCreateCommit({
   fileContents,
   removedFiles,
   missingRemovedFiles,
+  commitMessage,
 }) {
   removedFiles = removedFiles || [];
   missingRemovedFiles = missingRemovedFiles || [];
+  commitMessage = commitMessage || `Automated OAS update: ${Object.keys(fileContents)
+    .concat(removedFiles)
+    .concat(missingRemovedFiles)
+    .join(", ")}`
 
   // Get Ref
   nock("https://api.github.com")
@@ -808,10 +872,7 @@ function mockCreateCommit({
   // Create Commit
   nock("https://api.github.com")
     .post(`/repos/${owner}/${repo}/git/commits`, {
-      message: `Automated OAS update: ${Object.keys(fileContents)
-        .concat(removedFiles)
-        .concat(missingRemovedFiles)
-        .join(", ")}`,
+      message: commitMessage,
       parents: ["sha-main-branch"],
     })
     .reply(201, {
