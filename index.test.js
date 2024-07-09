@@ -6,7 +6,6 @@ const github = require("@actions/github");
 
 const { when } = require("jest-when");
 const mockedEnv = require("mocked-env");
-const { log } = require("console");
 const nock = require("nock");
 nock.disableNetConnect();
 
@@ -112,13 +111,12 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
-    it.only("creates a PR when required with a custom commit message", async () => {
+    it("creates a PR when required with a custom commit message", async () => {
       const commitMessage = "feat(sdk): automated oas update";
 
       restoreTest = mockPr({
         ...defaultConfig,
         INPUT_MODE: "pr-changes",
-        // TODO: Adding this line causes the `status` to return `failure` and the "Not all nock interceptors were used" error
         INPUT_COMMITMESSAGE: commitMessage,
       });
 
@@ -149,7 +147,7 @@ describe("Raise PR on change", () => {
           "specs/foo.yaml": myFileContents,
           "specs/bar.yaml": anotherFileContents,
         },
-        message: commitMessage,
+        commitMessage,
       });
 
       mockCreatePr({
@@ -161,9 +159,6 @@ describe("Raise PR on change", () => {
       });
 
       await action();
-
-      // TODO: This outputs the console.log calls to the console and shows our commit message is present
-      log(console.log.mock.calls)
 
       expect(console.log.mock.calls.some(call => call[0].includes(commitMessage))).toBe(true);
       expect(core.setOutput).toBeCalledTimes(1);
