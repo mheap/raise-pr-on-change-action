@@ -192,7 +192,7 @@ async function action() {
         }
       } else {
         console.log(
-          `[${owner}/${repo}] PR already exists. Not creating another`
+          `[${owner}/${repo}] PR already exists ${pr.html_url}. Not creating another`
         );
       }
     }
