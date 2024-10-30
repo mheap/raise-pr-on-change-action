@@ -29,3 +29,6 @@ inputs:
   prBody:
     description: "The PR body to use"
     required: true
+  commitMessage:
+    description: "The commit message use"
+    required: false
