@@ -4,13 +4,25 @@ const github = require("@actions/github");
 const Diff = require("diff");
 
 const CommitMultipleFiles = require("octokit-commit-multiple-files");
+const { retry } = require("@octokit/plugin-retry");
 
 const fs = require("fs");
 
 async function action() {
   try {
     const token = core.getInput("token", { required: true });
-    const octokit = github.getOctokit(token, {}, CommitMultipleFiles);
+    const octokit = github.getOctokit(
+      token,
+      {
+        retry: {
+          enabled: true,
+          retryAfter: 5,
+          retries: 5,
+        },
+      },
+      CommitMultipleFiles,
+      retry
+    );
 
     // Process input for use later
     const configFile = core.getInput("configFile");
