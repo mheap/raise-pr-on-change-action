@@ -78,7 +78,24 @@ async function action() {
         if (fs.existsSync(f.src)) {
           content = fs.readFileSync(f.src);
         } else {
-          removedFiles.push(f.dest);
+          // If it exists in the repo, we need to remove it
+          try {
+            if (mode == "check-upstream") {
+              await octokit.rest.repos.getContent({
+                method: "HEAD",
+                owner,
+                repo,
+                path: f.dest,
+              });
+            }
+            removedFiles.push(f.dest);
+          } catch (e) {
+            // 404 means the file doesn't exist upstream, so there's nothing to delete
+            if (e.status != "404") {
+              throw e;
+            }
+          }
+          // Then always continue as we've done the mode check
           continue;
         }
 

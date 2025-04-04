@@ -622,8 +622,7 @@ describe("Raise PR on change", () => {
         targetSha: "sha-main-branch",
         fileContents: {
           "specs/bar.yaml": anotherFileContents,
-        },
-        missingRemovedFiles: ["specs/foo.yaml"],
+        }
       });
 
       mockCreatePr({
@@ -638,6 +637,7 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
+
 
     it("handles deletes files in the upstream repo (deletions)", async () => {
       restoreTest = mockPr({
@@ -688,6 +688,47 @@ describe("Raise PR on change", () => {
         targetBranch,
         prExists: false,
       });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("handles missing upstream files when deleting files only (no changes)", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "another-file.yaml": anotherFileContents,
+        },
+        removedFiles: ["my-file.yaml"],
+      });
+
+      // This file is deleted so we also have to mock the HEAD check
+      mockFileExists({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        code: 404
+      });
+
+      // This file is identical, so no change
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      mockPrExists({ owner, repo, prBranch, prExists: false });
+
+      // No PR is created as the existing files are identical,
+      // and the deleted files don't exist in the downstream repo
 
       await action();
       expect(core.setOutput).toBeCalledTimes(1);
@@ -749,15 +790,27 @@ function mockFileContent({ owner, repo, path, content, code }) {
     });
 }
 
-function mockFileExists({ owner, repo, path, code }) {
+function mockFileExists({ owner, repo, path, code, onlyDeletes }) {
   code = code || 200;
+
+  // We check if the file exists on the default branch too
   nock("https://api.github.com")
     .head(
       `/repos/${owner}/${repo}/contents/${encodeURIComponent(
         path
-      )}?ref=sha-main-branch`
+      )}`
     )
     .reply(code);
+
+  if (code != 404) {
+    nock("https://api.github.com")
+      .head(
+        `/repos/${owner}/${repo}/contents/${encodeURIComponent(
+          path
+        )}?ref=sha-main-branch`
+      )
+      .reply(code);
+  }
 }
 
 function mockPrExists({ owner, repo, prBranch, prExists }) {
@@ -806,14 +859,11 @@ function mockCreateCommit({
   targetSha,
   fileContents,
   removedFiles,
-  missingRemovedFiles,
   commitMessage,
 }) {
   removedFiles = removedFiles || [];
-  missingRemovedFiles = missingRemovedFiles || [];
   commitMessage = commitMessage || `Automated OAS update: ${Object.keys(fileContents)
     .concat(removedFiles)
-    .concat(missingRemovedFiles)
     .join(", ")}`
 
   // Get Ref
