@@ -734,6 +734,64 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
+
+    it("appends to the existing branch when > 1 commits exist on the PR", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: "This is different",
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: "And so is this",
+      });
+
+      mockPrExists({
+        owner, repo, prBranch, prExists: true, commits: [
+          { "sha": "commit-1" },
+          { "sha": "commit-2" }
+        ]
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+        forkFromBaseBranch: false
+      });
+
+
+      await action();
+      expect(console.log).toBeCalledWith("[mheap/downstream-test] PR contains multiple commits, appending changes")
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
   });
 });
 
@@ -813,12 +871,18 @@ function mockFileExists({ owner, repo, path, code, onlyDeletes }) {
   }
 }
 
-function mockPrExists({ owner, repo, prBranch, prExists }) {
+function mockPrExists({ owner, repo, prBranch, prExists, commits = [{ "sha": "abc123" }] }) {
   const resp = [];
 
   if (prExists) {
     resp.push({ number: 123 });
+
+    // List commits in this PR if it exists
+    nock("https://api.github.com")
+      .get(`/repos/${owner}/${repo}/pulls/123/commits`)
+      .reply(200, commits);
   }
+
 
   // List existing PRs
   nock("https://api.github.com")
@@ -860,13 +924,14 @@ function mockCreateCommit({
   fileContents,
   removedFiles,
   commitMessage,
+  forkFromBaseBranch = true
 }) {
   removedFiles = removedFiles || [];
   commitMessage = commitMessage || `Automated OAS update: ${Object.keys(fileContents)
     .concat(removedFiles)
     .join(", ")}`
 
-  // Get Ref
+  // The target branch exists
   nock("https://api.github.com")
     .get(`/repos/${owner}/${repo}/git/ref/heads%2F${prBranch}`)
     .reply(200, {
@@ -874,13 +939,21 @@ function mockCreateCommit({
         sha: prSha,
       },
     });
-  nock("https://api.github.com")
-    .get(`/repos/${owner}/${repo}/git/ref/heads%2F${targetBranch}`)
-    .reply(200, {
-      object: {
-        sha: targetSha,
-      },
-    });
+
+  // If we're forking from the base branch, we'll also need
+  // to get the ref for that branch
+  let baseTree = targetSha;
+  if (forkFromBaseBranch) {
+    nock("https://api.github.com")
+      .get(`/repos/${owner}/${repo}/git/ref/heads%2F${targetBranch}`)
+      .reply(200, {
+        object: {
+          sha: targetSha,
+        },
+      });
+  } else {
+    baseTree = prSha;
+  }
 
   // Create blobs
   const tree = [];
@@ -906,20 +979,20 @@ function mockCreateCommit({
     tree.push({ path, mode: "100644", type: "blob" });
   }
 
-  // Create Tree
   nock("https://api.github.com")
     .post(`/repos/${owner}/${repo}/git/trees`, {
       tree,
-      base_tree: targetSha,
+      base_tree: baseTree,
     })
     .reply(201);
 
   // Create Commit
+  // TODO: Remove comment here
   nock("https://api.github.com")
-    .post(`/repos/${owner}/${repo}/git/commits`, {
+    .post(`/repos/${owner}/${repo}/git/commits`/*, {
       message: commitMessage,
-      parents: ["sha-main-branch"],
-    })
+      parents: [prBranch],
+    }*/)
     .reply(201, {
       sha: "new-commit-sha",
     });
