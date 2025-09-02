@@ -182,12 +182,30 @@ async function action() {
 
       console.log(`[${owner}/${repo}] Commit message: ${message}`);
 
+      // Check if the PR contains > 1 commit. If so, we append commits
+      // rather than force pushing
+      let forkFromBaseBranch = true;
+
+      let commits;
+      if (pr) {
+        commits = (await octokit.rest.pulls.listCommits({
+          owner,
+          repo,
+          pull_number: pr.number,
+        })).data;
+      }
+
+      if (pr && commits && commits.length > 1) {
+        forkFromBaseBranch = false;
+        console.log(`[${owner}/${repo}] PR contains multiple commits, appending changes`);
+      }
+
       const opts = {
         owner,
         repo,
         branch: prBranch,
         createBranch: true,
-        forkFromBaseBranch: true,
+        forkFromBaseBranch,
         changes: [
           {
             message,
