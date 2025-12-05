@@ -176,6 +176,19 @@ async function action() {
         `[${owner}/${repo}] Found ${changedFilesCount} changed files and ${removedFilesCount} removed files`
       );
 
+      if (changedFilesCount > 0) {
+        console.log( `[${owner}/${repo}] Changed files:`);
+        for (const f of Object.keys(commitFiles)) {
+          console.log(`[${owner}/${repo}] ${f}`);
+        }
+      }
+      if (removedFilesCount > 0) {
+        console.log( `[${owner}/${repo}] Removed files:`);
+        for (const f of removedFiles) {
+          console.log(`[${owner}/${repo}] ${f}`);
+        }
+      }
+
       let message = commitMessage ||
         "Automated OAS update: " +
         Object.keys(commitFiles).concat(removedFiles).join(", ");
@@ -233,7 +246,7 @@ async function action() {
               base: targetBranch,
             })
           ).data;
-          console.log(`[${owner}/${repo}] PR created`);
+          console.log(`[${owner}/${repo}] PR created #${pr.number}`);
         } catch (e) {
           core.setFailed(`[${owner}/${repo}] ${e.message}`);
         }
