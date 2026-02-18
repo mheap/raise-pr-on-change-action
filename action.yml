@@ -32,3 +32,7 @@ inputs:
   commitMessage:
     description: "The commit message use"
     required: false
+  assignReviewers:
+    description: "Automatically request reviews from the source PR author and approvers on the downstream PR"
+    required: false
+    default: "false"
