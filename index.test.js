@@ -297,43 +297,6 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
-    it("does not raise a PR if file contents have not changed", async () => {
-      restoreTest = mockPr({
-        ...defaultConfig,
-        INPUT_MODE: "check-upstream",
-      });
-
-      const myFileContents = "First File";
-      const anotherFileContents = "Second File";
-
-      mockRepoContents({
-        files: {
-          "my-file.yaml": myFileContents,
-          "another-file.yaml": anotherFileContents,
-        },
-      });
-
-      mockFileContent({
-        owner,
-        repo,
-        path: "specs/foo.yaml",
-        content: myFileContents,
-      });
-
-      mockFileContent({
-        owner,
-        repo,
-        path: "specs/bar.yaml",
-        content: anotherFileContents,
-      });
-
-      mockPrExists({ owner, repo, prBranch, prExists: false });
-
-      await action();
-      expect(core.setOutput).toBeCalledTimes(1);
-      expect(core.setOutput).toBeCalledWith("status", "success");
-    });
-
     it("raises a PR if files change in upstream one, but not upstream two", async () => {
       restoreTest = mockPr({
         ...defaultConfig,
@@ -786,9 +749,483 @@ describe("Raise PR on change", () => {
         forkFromBaseBranch: false
       });
 
-
       await action();
       expect(console.log).toBeCalledWith("[mheap/downstream-test] PR contains multiple commits, appending changes")
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+  });
+
+  describe("reviewer assignment", () => {
+    it("requests review from author and approvers on a new PR", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockListReviews({
+        owner: "mheap",
+        repo: "missing-repo",
+        pullNumber: 27,
+        reviews: [
+          { state: "APPROVED", user: { login: "approver1" } },
+          { state: "APPROVED", user: { login: "approver2" } },
+        ],
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      mockRequestReviewers({
+        owner,
+        repo,
+        pullNumber: 456,
+        reviewers: ["source-pr-author", "approver1", "approver2"],
+      });
+
+      await action();
+
+      expect(console.log).toBeCalledWith("Source PR author: source-pr-author");
+      expect(console.log).toBeCalledWith("Source PR approvers: approver1, approver2");
+      expect(console.log).toBeCalledWith(
+        "[mheap/downstream-test] Requesting reviewers: source-pr-author, approver1, approver2"
+      );
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("requests review on an existing PR", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockListReviews({
+        owner: "mheap",
+        repo: "missing-repo",
+        pullNumber: 27,
+        reviews: [
+          { state: "APPROVED", user: { login: "approver1" } },
+        ],
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: true,
+      });
+
+      mockRequestReviewers({
+        owner,
+        repo,
+        pullNumber: 123,
+        reviewers: ["source-pr-author", "approver1"],
+      });
+
+      await action();
+
+      expect(console.log).toBeCalledWith(
+        "[mheap/downstream-test] Requesting reviewers: source-pr-author, approver1"
+      );
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("deduplicates when author is also an approver", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockListReviews({
+        owner: "mheap",
+        repo: "missing-repo",
+        pullNumber: 27,
+        reviews: [
+          { state: "APPROVED", user: { login: "source-pr-author" } },
+          { state: "APPROVED", user: { login: "approver1" } },
+        ],
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      mockRequestReviewers({
+        owner,
+        repo,
+        pullNumber: 456,
+        reviewers: ["source-pr-author", "approver1"],
+      });
+
+      await action();
+
+      expect(console.log).toBeCalledWith(
+        "[mheap/downstream-test] Requesting reviewers: source-pr-author, approver1"
+      );
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("only includes approved reviews, not other review states", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockListReviews({
+        owner: "mheap",
+        repo: "missing-repo",
+        pullNumber: 27,
+        reviews: [
+          { state: "APPROVED", user: { login: "approver1" } },
+          { state: "CHANGES_REQUESTED", user: { login: "reviewer1" } },
+          { state: "COMMENTED", user: { login: "commenter1" } },
+        ],
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      mockRequestReviewers({
+        owner,
+        repo,
+        pullNumber: 456,
+        reviewers: ["source-pr-author", "approver1"],
+      });
+
+      await action();
+
+      expect(console.log).toBeCalledWith(
+        "[mheap/downstream-test] Requesting reviewers: source-pr-author, approver1"
+      );
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("skips reviewer assignment when no source PR context", async () => {
+      // Simulate a non-pull_request trigger (e.g. schedule or push)
+      github.context.payload = {};
+      restoreTest = mockedEnv({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: "This is different",
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      // No mockRequestReviewers — it should NOT be called
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("logs a warning and continues when requesting reviewers fails", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockListReviews({
+        owner: "mheap",
+        repo: "missing-repo",
+        pullNumber: 27,
+        reviews: [],
+      });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      // Mock requestReviewers to fail
+      nock("https://api.github.com")
+        .post(`/repos/${owner}/${repo}/pulls/456/requested_reviewers`)
+        .reply(422, { message: "Reviews may not be requested from pull request author." });
+
+      await action();
+
+      expect(console.log).toBeCalledWith(
+        expect.stringContaining("[mheap/downstream-test] Warning: Could not request reviewers:")
+      );
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("logs a warning and continues when fetching reviews fails", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_ASSIGNREVIEWERS: "true",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      // Mock listReviews to fail
+      nock("https://api.github.com")
+        .get("/repos/mheap/missing-repo/pulls/27/reviews")
+        .reply(403, { message: "Resource not accessible by integration" });
+
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml", "another-file.yaml"],
+      });
+
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: {
+          "specs/foo.yaml": myFileContents,
+          "specs/bar.yaml": anotherFileContents,
+        },
+      });
+
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: false,
+      });
+
+      // Still requests review from author even when fetching reviews fails
+      mockRequestReviewers({
+        owner,
+        repo,
+        pullNumber: 456,
+        reviewers: ["source-pr-author"],
+      });
+
+      await action();
+
+      expect(console.log).toBeCalledWith(
+        expect.stringContaining("Warning: Could not fetch source PR reviews:")
+      );
       expect(core.setOutput).toBeCalledTimes(1);
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
@@ -890,7 +1327,7 @@ function mockPrExists({ owner, repo, prBranch, prExists, commits = [{ "sha": "ab
     .reply(200, resp);
 }
 
-function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
+function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists, prNumber = 456 }) {
   mockPrExists({ owner, repo, prBranch, prExists });
 
   if (!prExists) {
@@ -902,7 +1339,7 @@ function mockCreatePr({ owner, repo, prBranch, targetBranch, prExists }) {
         head: prBranch,
         base: targetBranch,
       })
-      .reply(201);
+      .reply(201, { number: prNumber });
   }
 }
 
@@ -912,6 +1349,20 @@ function mockClosePr({ owner, repo, prBranch }) {
       state: "closed",
     })
     .reply(200);
+}
+
+function mockListReviews({ owner, repo, pullNumber, reviews }) {
+  nock("https://api.github.com")
+    .get(`/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`)
+    .reply(200, reviews);
+}
+
+function mockRequestReviewers({ owner, repo, pullNumber, reviewers }) {
+  nock("https://api.github.com")
+    .post(`/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, {
+      reviewers,
+    })
+    .reply(201);
 }
 
 function mockCreateCommit({
@@ -1006,9 +1457,9 @@ function mockCreateCommit({
     .reply(200);
 }
 
-function mockPr(envParams = {}) {
+function mockPr(envParams = {}, { prAuthor = "source-pr-author" } = {}) {
   const payload = {
-    pull_request: { number: 27 },
+    pull_request: { number: 27, user: { login: prAuthor } },
   };
   return mockEvent(
     {

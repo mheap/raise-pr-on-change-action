@@ -32,6 +32,7 @@ async function action() {
     const prTitle = core.getInput("prTitle", { required: true });
     const prBody = core.getInput("prBody", { required: true });
     const commitMessage = core.getInput("commitMessage") || "";
+    const assignReviewers = core.getInput("assignReviewers") === "true";
 
     // Read the config file
     const upstreams = JSON.parse(fs.readFileSync(configFile));
@@ -40,6 +41,42 @@ async function action() {
     const validModes = ["pr-changes", "check-upstream"];
     if (!validModes.includes(mode)) {
       throw new Error(`Invalid mode provided: ${mode}`);
+    }
+
+    // Collect reviewers from the source PR (author + approvers)
+    let reviewers = [];
+    const sourcePr = github.context.payload.pull_request;
+    if (assignReviewers && sourcePr) {
+      const author = sourcePr.user.login;
+      console.log(`Source PR author: ${author}`);
+
+      // Fetch approved reviews from the source PR
+      let approvers = [];
+      try {
+        const reviews = await octokit.paginate(
+          octokit.rest.pulls.listReviews,
+          {
+            ...github.context.repo,
+            pull_number: sourcePr.number,
+          },
+          (response) => response.data
+        );
+        approvers = [
+          ...new Set(
+            reviews
+              .filter((r) => r.state === "APPROVED")
+              .map((r) => r.user.login)
+          ),
+        ];
+        if (approvers.length > 0) {
+          console.log(`Source PR approvers: ${approvers.join(", ")}`);
+        }
+      } catch (e) {
+        console.log(`Warning: Could not fetch source PR reviews: ${e.message}`);
+      }
+
+      // Deduplicate author + approvers
+      reviewers = [...new Set([author, ...approvers])];
     }
 
     let changedFiles = [];
@@ -254,6 +291,25 @@ async function action() {
         console.log(
           `[${owner}/${repo}] PR already exists ${pr.html_url}. Not creating another`
         );
+      }
+
+      // Request reviewers on the PR (both new and existing PRs)
+      if (pr && reviewers.length > 0) {
+        try {
+          console.log(
+            `[${owner}/${repo}] Requesting reviewers: ${reviewers.join(", ")}`
+          );
+          await octokit.rest.pulls.requestReviewers({
+            owner,
+            repo,
+            pull_number: pr.number,
+            reviewers,
+          });
+        } catch (e) {
+          console.log(
+            `[${owner}/${repo}] Warning: Could not request reviewers: ${e.message}`
+          );
+        }
       }
     }
     core.setOutput("status", "success");
