@@ -213,6 +213,74 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
+    it("skips updating an existing PR when it has the configured label", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+        INPUT_SKIPPUSHLABEL: "pause-automated-updates",
+      });
+
+      mockRepoContents({
+        files: { "my-file.yaml": "Updated contents" },
+      });
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml"],
+      });
+      mockPrExists({
+        owner,
+        repo,
+        prBranch,
+        prExists: true,
+        labels: [{ name: "pause-automated-updates" }],
+        fetchCommits: false,
+      });
+
+      await action();
+
+      expect(console.log).toBeCalledWith(
+        '[mheap/downstream-test] Existing PR has label "pause-automated-updates"; skipping update'
+      );
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
+    it("updates an existing PR when the skip label input is empty", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "pr-changes",
+      });
+
+      mockRepoContents({
+        files: { "my-file.yaml": "Updated contents" },
+      });
+      mockPrChanges({
+        owner,
+        repo: "missing-repo",
+        files: ["my-file.yaml"],
+      });
+      mockCreateCommit({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prSha: "sha-pr-branch",
+        targetSha: "sha-main-branch",
+        fileContents: { "specs/foo.yaml": "Updated contents" },
+      });
+      mockCreatePr({
+        owner,
+        repo,
+        prBranch,
+        targetBranch,
+        prExists: true,
+      });
+
+      await action();
+
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
     it("skips files that are not in the list of changed files in the PR", async () => {
       restoreTest = mockPr({
         ...defaultConfig,
@@ -1308,16 +1376,18 @@ function mockFileExists({ owner, repo, path, code, onlyDeletes }) {
   }
 }
 
-function mockPrExists({ owner, repo, prBranch, prExists, commits = [{ "sha": "abc123" }] }) {
+function mockPrExists({ owner, repo, prBranch, prExists, commits = [{ "sha": "abc123" }], labels = [], fetchCommits = true }) {
   const resp = [];
 
   if (prExists) {
-    resp.push({ number: 123 });
+    resp.push({ number: 123, labels });
 
     // List commits in this PR if it exists
-    nock("https://api.github.com")
-      .get(`/repos/${owner}/${repo}/pulls/123/commits`)
-      .reply(200, commits);
+    if (fetchCommits) {
+      nock("https://api.github.com")
+        .get(`/repos/${owner}/${repo}/pulls/123/commits`)
+        .reply(200, commits);
+    }
   }
 
 

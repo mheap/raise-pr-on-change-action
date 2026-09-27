@@ -36,3 +36,7 @@ inputs:
     description: "Automatically request reviews from the source PR author and approvers on the downstream PR"
     required: false
     default: "false"
+  skipPushLabel:
+    description: "Skip updating an existing downstream PR when it has this label"
+    required: false
+    default: ""

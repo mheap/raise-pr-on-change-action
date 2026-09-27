@@ -33,6 +33,7 @@ async function action() {
     const prBody = core.getInput("prBody", { required: true });
     const commitMessage = core.getInput("commitMessage") || "";
     const assignReviewers = core.getInput("assignReviewers") === "true";
+    const skipPushLabel = core.getInput("skipPushLabel").trim();
 
     // Read the config file
     const upstreams = JSON.parse(fs.readFileSync(configFile));
@@ -188,6 +189,19 @@ async function action() {
           head: `${owner}:${prBranch}`,
         })
       ).data[0];
+
+      // A label on an existing downstream PR can be used to pause automated
+      // updates while that PR is undergoing other work.
+      if (
+        pr &&
+        skipPushLabel &&
+        (pr.labels || []).some((label) => label.name === skipPushLabel)
+      ) {
+        console.log(
+          `[${owner}/${repo}] Existing PR has label "${skipPushLabel}"; skipping update`
+        );
+        continue;
+      }
 
       // If there are no changes, don't raise a PR
       // and close any existing PRs
