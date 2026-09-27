@@ -50,6 +50,7 @@ jobs:
           prTitle: "Automated update X"
           prBody: "This adds files based on upstream repo Y"
           commitMessage: "feat(sdk): automated oas update"
+          skipPushLabel: "pause-automated-updates"
 ```
 
 ## Available Configuration
@@ -66,3 +67,4 @@ jobs:
 | `prTitle`       | The PR title to use                                                                                                                                                                                                           | true     |
 | `prBody`        | The PR body to use                                                                                                                                                                                                            | true     |
 | `commitMessage` | The commit message use                                                                                                                                                                                                        | false    | Automated OAS update: {file list} |
+| `skipPushLabel` | Skip updating an existing downstream PR when it has this label                                                                                                                                                               | false    | (empty)                            |
