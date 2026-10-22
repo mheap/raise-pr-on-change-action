@@ -145,25 +145,9 @@ async function action() {
                 owner,
                 repo,
                 path: f.dest,
-              });
-
-            let upstreamContentDecoded;
-            if (upstreamContent.encoding === "none") {
-              // Files over 1MB come back with no content, so fetch the raw body
-              const { data: rawContent } = await octokit.rest.repos.getContent({
-                owner,
-                repo,
-                path: f.dest,
                 mediaType: { format: "raw" },
               });
-              upstreamContentDecoded = String(rawContent);
-            } else {
-              // Convert from base64
-              upstreamContentDecoded = Buffer.from(
-                upstreamContent.content,
-                "base64"
-              ).toString("utf-8");
-            }
+            const upstreamContentDecoded = String(upstreamContent);
 
             if (content == upstreamContentDecoded) {
               console.log(`[${owner}/${repo}] Files are the same, skipping (${f.src} => ${f.dest})`);
