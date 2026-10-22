@@ -365,6 +365,43 @@ describe("Raise PR on change", () => {
       expect(core.setOutput).toBeCalledWith("status", "success");
     });
 
+    it("does not raise a PR if a file over 1MB has not changed", async () => {
+      restoreTest = mockPr({
+        ...defaultConfig,
+        INPUT_MODE: "check-upstream",
+      });
+
+      const myFileContents = "First File";
+      const anotherFileContents = "Second File";
+
+      mockRepoContents({
+        files: {
+          "my-file.yaml": myFileContents,
+          "another-file.yaml": anotherFileContents,
+        },
+      });
+
+      mockLargeFileContent({
+        owner,
+        repo,
+        path: "specs/foo.yaml",
+        content: myFileContents,
+      });
+
+      mockFileContent({
+        owner,
+        repo,
+        path: "specs/bar.yaml",
+        content: anotherFileContents,
+      });
+
+      mockPrExists({ owner, repo, prBranch, prExists: false });
+
+      await action();
+      expect(core.setOutput).toBeCalledTimes(1);
+      expect(core.setOutput).toBeCalledWith("status", "success");
+    });
+
     it("raises a PR if files change in upstream one, but not upstream two", async () => {
       restoreTest = mockPr({
         ...defaultConfig,
@@ -1351,6 +1388,20 @@ function mockFileContent({ owner, repo, path, content, code }) {
     .reply(code, {
       content: Buffer.from(content).toString("base64"),
     });
+}
+
+// The contents API returns no content for files over 1MB, so the
+// raw media type has to be requested to get the body
+function mockLargeFileContent({ owner, repo, path, content }) {
+  const url = `/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  nock("https://api.github.com")
+    .get(url)
+    .reply(200, { content: "", encoding: "none" });
+  nock("https://api.github.com", {
+    reqheaders: { accept: "application/vnd.github.v3.raw" },
+  })
+    .get(url)
+    .reply(200, content);
 }
 
 function mockFileExists({ owner, repo, path, code, onlyDeletes }) {
