@@ -145,13 +145,9 @@ async function action() {
                 owner,
                 repo,
                 path: f.dest,
+                mediaType: { format: "raw" },
               });
-
-            // Convert from base64
-            const upstreamContentDecoded = Buffer.from(
-              upstreamContent.content,
-              "base64"
-            ).toString("utf-8");
+            const upstreamContentDecoded = String(upstreamContent);
 
             if (content == upstreamContentDecoded) {
               console.log(`[${owner}/${repo}] Files are the same, skipping (${f.src} => ${f.dest})`);
